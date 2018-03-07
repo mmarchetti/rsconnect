@@ -118,7 +118,9 @@ lint <- function(project, files = NULL, appPrimaryDoc = NULL) {
     static = any(grepl("(?:html?|pdf)$", appFilesBase)),
     plumber = any(c("entrypoint.r", "plumber.r") %in% appFilesBase),
     tensorflow = length(c(
+      # e.g.: ${dir}/1/saved_model.pb(txt)
       Sys.glob(file.path(getwd(),"*","saved_model.pb*")),
+      # e.g.: ${dir}/saved_model.pb(txt)
       Sys.glob(file.path(getwd(),"saved_model.pb*"))
       )) > 0
   )
