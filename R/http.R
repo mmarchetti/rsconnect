@@ -747,10 +747,11 @@ httpLibCurl <- function(protocol,
                   config = config,
                   httr::add_headers(.headers = unlist(headers)))
       } else if (identical(method, "POST")) {
+        fileLength <- file.info(contentFile)$size
         httr::POST(url,
                    config = config,
                    httr::add_headers(.headers = unlist(headers)),
-                   body = httr::upload_file(contentFile, contentType))
+                   body = readBin(contentFile, what = "raw", n = fileLength))
       } else if (identical(method, "PUT")) {
         httr::PUT(url,
                   config = config,
