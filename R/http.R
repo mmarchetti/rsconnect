@@ -691,27 +691,25 @@ httpLibCurl <- function(protocol,
   # build url
   url <- paste0(protocol, "://", host, port, path)
 
-  # create a new curl handle
-  handle <- curl::new_handle()
-
   # establish options
-  curl::handle_setopt(handle, useragent = userAgent())
+  options <- list()
+  options$useragent <- userAgent()
 
   # overlay user-supplied options
   userOptions <- getOption("rsconnect.libcurl.options")
   if (is.list(userOptions)) {
-    curl::handle_setopt(handle, .list = userOptions)
+    options <- append(options, userOptions)
   }
 
   if (isTRUE(getOption("rsconnect.check.certificate", TRUE))) {
-    curl::handle_setopt(handle, ssl_verifypeer = TRUE)
+    options$ssl_verifypeer <- TRUE
 
     # apply certificate information if present
     if (!is.null(certificate))
-      curl::handle_setopt(handle, cainfo = certificate)
+      options$cainfo = certificate
   } else {
     # don't verify peer (less secure but tolerant to self-signed cert issues)
-    curl::handle_setopt(handle, ssl_verifypeer = FALSE)
+    options$ssl_verifypeer <- FALSE
   }
 
   if (!is.null(writer)) {
@@ -720,12 +718,12 @@ httpLibCurl <- function(protocol,
 
   # use timeout if supplied
   if (!is.null(timeout)) {
-    curl::handle_setopt(handle, timeout = timeout)
+    options$timeout <- timeout
   }
 
   # verbose if requested
   if (httpVerbose())
-    curl::handle_setopt(handle, verbose = TRUE)
+    options$verbose <- TRUE
 
   # add cookie headers
   headers <- appendCookieHeaders(
@@ -738,38 +736,33 @@ httpLibCurl <- function(protocol,
     headers$`Content-Length` <- as.character(fileLength)
   }
 
-  curl::handle_setopt(handle, customrequest = method)
-  curl::handle_setheaders(handle, .list = headers)
-
-  if (!is.null(contentFile)) {
-    con <- file(contentFile, "rb")
-    if (identical(method, "POST")) {
-      curl::handle_setopt(handle,
-                          post = TRUE,
-                          postfieldsize_large = fileLength)
-    } else if (identical(method, "PUT")) {
-      curl::handle_setopt(handle,
-                          upload = TRUE,
-                          infilesize_large = fileLength)
-    }
-    curl::handle_setopt(handle,
-      readfunction = function(nbytes, ...) {
-         if (is.null(con)) {
-           return(raw())
-         }
-         bin <- readBin(con, "raw", nbytes)
-         if (length(bin) < nbytes) {
-           close(con)
-           con <<- NULL
-         }
-         bin
-      })
-  }
+  options$customrequest <- method
+  config <- do.call(httr::config, options)
 
   # make the request
   response <- NULL
   time <- system.time(gcFirst = FALSE, tryCatch({
-      response <- curl::curl_fetch_memory(url, handle = handle)
+      response <- if (identical(method, "GET")) {
+        httr::GET(url,
+                  config = config,
+                  httr::add_headers(.headers = unlist(headers)))
+      } else if (identical(method, "POST")) {
+        httr::POST(url,
+                   config = config,
+                   httr::add_headers(.headers = unlist(headers)),
+                   body = httr::upload_file(contentFile, contentType))
+      } else if (identical(method, "PUT")) {
+        httr::PUT(url,
+                  config = config,
+                  httr::add_headers(.headers = unlist(headers)),
+                  body = httr::upload_file(contentFile, contentType))
+      } else if (identical(method, "DELETE")) {
+        httr::DELETE(url,
+                     config = config,
+                     httr::add_headers(.headers = unlist(headers)))
+      } else {
+        stop("Unsupported HTTP verb '", method, "'")
+      }
     },
     error = function(e, ...) {
       # ignore errors resulting from timeout or user abort
@@ -783,7 +776,7 @@ httpLibCurl <- function(protocol,
   httpTrace(method, path, time)
 
   # get list of HTTP response headers
-  headers <- curl::parse_headers_list(rawToChar(response$headers))
+  headers <- httr::headers(response)
 
   if ("location" %in% names(headers))
     location <- headers[["location"]]
