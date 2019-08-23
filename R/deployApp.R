@@ -399,6 +399,9 @@ deployApp <- function(appDir = getwd(),
   if (verbose) {
     cat("----- Server deployment started at ", as.character(Sys.time()), " -----\n")
   }
+  if (!isShinyapps(accountDetails)) {
+    cat("----- Server log messages: -----\n")
+  }
 
   # wait for the deployment to complete (will raise an error if it can't)
   task <- client$deployApplication(application$id, bundle$id)
